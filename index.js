@@ -22,7 +22,7 @@ const PLATFORM_ORDER = [
 ];
 
 async function getOdesliData(url) {
-  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}`;
+  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US`;
   const res = await fetch(apiUrl);
   if (!res.ok) return null;
   const data = await res.json();
