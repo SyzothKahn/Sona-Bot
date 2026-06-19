@@ -30,8 +30,6 @@ const PLATFORM_ORDER = [
   { key: 'youtubeMusic', label: 'YOUTUBE MUSIC' },
   { key: 'spotify',      label: 'SPOTIFY' },
   { key: 'appleMusic',   label: 'APPLE MUSIC' },
-  { key: 'tidal',        label: 'TIDAL' },
-  { key: 'amazonMusic',  label: 'AMAZON MUSIC' },
 ];
 
 // youtube.com/watch needs 'v' to identify the video — keep only that, drop everything else.
