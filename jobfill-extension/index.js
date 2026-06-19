@@ -37,14 +37,38 @@ function cleanUrl(url) {
   return parsed.toString();
 }
 
-async function getOdesliData(url) {
-  const clean = cleanUrl(url);
-  console.log('Sending to Odesli:', clean);
-  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(clean)}&userCountry=US`;
+function extractSpotifyTrackId(url) {
+  const match = url.match(/open\.spotify\.com\/track\/([A-Za-z0-9]+)/);
+  return match ? match[1] : null;
+}
+
+async function fetchOdesli(url, isSpotify = false) {
+  const extra = isSpotify ? '&skipCache=true' : '';
+  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US${extra}`;
+  console.log('Sending to Odesli:', url);
   const res = await fetch(apiUrl);
   if (!res.ok) return null;
   const data = await res.json();
-  if (!data.linksByPlatform) return null;
+  return data.linksByPlatform ? data : null;
+}
+
+async function getOdesliData(url) {
+  const clean = cleanUrl(url);
+  const isSpotify = clean.includes('open.spotify.com');
+
+  let data = await fetchOdesli(clean, isSpotify);
+
+  // If Spotify failed, retry with a bare reconstructed track URL
+  if (!data && isSpotify) {
+    const trackId = extractSpotifyTrackId(clean);
+    if (trackId) {
+      const bare = `https://open.spotify.com/track/${trackId}`;
+      console.log('Retrying Odesli with bare Spotify URL:', bare);
+      data = await fetchOdesli(bare, true);
+    }
+  }
+
+  if (!data) return null;
   const entity = data.entitiesByUniqueId?.[data.entityUniqueId];
   return {
     links: data.linksByPlatform,
