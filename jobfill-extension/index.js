@@ -1,3 +1,10 @@
+The broken hostname line is still in there. That's not the Spotify issue but fix it while you're in the file anyway.
+
+More importantly, the real Spotify problem is that `spotify.link` short links need to be resolved to a full `open.spotify.com` URL before Odesli can process them, and the regex is catching both formats but the code only knows how to extract a track ID from `open.spotify.com` links.
+
+Paste this entire replacement into GitHub, it fixes both issues:
+
+```javascript
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const http = require('http');
@@ -22,9 +29,6 @@ const PLATFORM_ORDER = [
   { key: 'amazonMusic',  label: 'AMAZON MUSIC' },
 ];
 
-// Strip all tracking params before sending to Odesli.
-// youtube.com/watch needs the 'v' param to identify the video — keep only that.
-// Every other URL gets all query params removed entirely.
 function cleanUrl(url) {
   const parsed = new URL(url);
   if (parsed.hostname === 'www.youtube.com' || parsed.hostname === 'youtube.com') {
@@ -42,9 +46,17 @@ function extractSpotifyTrackId(url) {
   return match ? match[1] : null;
 }
 
-async function fetchOdesli(url, isSpotify = false) {
-  const extra = isSpotify ? '&skipCache=true' : '';
-  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US${extra}`;
+async function resolveSpotifyShortLink(url) {
+  try {
+    const res = await fetch(url, { method: 'HEAD', redirect: 'follow' });
+    return res.url;
+  } catch {
+    return url;
+  }
+}
+
+async function fetchOdesli(url) {
+  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US&skipCache=true`;
   console.log('Sending to Odesli:', url);
   const res = await fetch(apiUrl);
   if (!res.ok) return null;
@@ -53,22 +65,29 @@ async function fetchOdesli(url, isSpotify = false) {
 }
 
 async function getOdesliData(url) {
-  const clean = cleanUrl(url);
-  const isSpotify = clean.includes('open.spotify.com');
+  let resolved = url;
 
-  let data = await fetchOdesli(clean, isSpotify);
+  if (url.includes('spotify.link')) {
+    resolved = await resolveSpotifyShortLink(url);
+    console.log('Resolved short link to:', resolved);
+  }
 
-  // If Spotify failed, retry with a bare reconstructed track URL
-  if (!data && isSpotify) {
+  const clean = cleanUrl(resolved);
+  console.log('Cleaned URL:', clean);
+
+  let data = await fetchOdesli(clean);
+
+  if (!data && clean.includes('open.spotify.com')) {
     const trackId = extractSpotifyTrackId(clean);
     if (trackId) {
       const bare = `https://open.spotify.com/track/${trackId}`;
-      console.log('Retrying Odesli with bare Spotify URL:', bare);
-      data = await fetchOdesli(bare, true);
+      console.log('Retrying with bare Spotify URL:', bare);
+      data = await fetchOdesli(bare);
     }
   }
 
   if (!data) return null;
+
   const entity = data.entitiesByUniqueId?.[data.entityUniqueId];
   return {
     links: data.linksByPlatform,
@@ -79,10 +98,8 @@ async function getOdesliData(url) {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
-
   const urls = [...(message.content.matchAll(MUSIC_URL_REGEX) ?? [])].map((m) => m[0]);
   if (urls.length === 0) return;
-
   const url = urls[0];
   let data;
   try {
@@ -91,15 +108,11 @@ client.on('messageCreate', async (message) => {
     return;
   }
   if (!data) return;
-
   const { links, artist, title } = data;
-
   const lines = PLATFORM_ORDER
     .filter(({ key }) => links[key])
     .map(({ key, label }) => `${label}: <${links[key].url}>`);
-
   if (lines.length === 0) return;
-
   const header = artist && title ? `**${artist} - ${title}**\n` : '';
   await message.reply(`${header}${lines.join('\n')}`);
 });
@@ -108,10 +121,10 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Keep-alive HTTP server so Railway doesn't SIGTERM the process
 const PORT = process.env.PORT || 3000;
 http.createServer((req, res) => res.end('ok')).listen(PORT, () => {
   console.log(`Keep-alive server listening on port ${PORT}`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
+```
