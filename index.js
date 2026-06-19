@@ -132,6 +132,40 @@ async function searchSpotify(artist, title) {
   return track.external_urls.spotify;
 }
 
+// --- YouTube Data API ---
+
+async function searchYouTube(artist, title) {
+  const key = process.env.YOUTUBE_API_KEY;
+  if (!key) return null;
+
+  const q = encodeURIComponent(`${artist} ${title}`);
+  const apiUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=1&q=${q}&key=${key}`;
+  console.log('YouTube Data API search:', `${artist} - ${title}`);
+
+  let res;
+  try {
+    res = await fetch(apiUrl);
+  } catch (err) {
+    console.log('YouTube API fetch failed:', err.message);
+    return null;
+  }
+
+  if (!res.ok) {
+    console.log('YouTube API error:', res.status);
+    return null;
+  }
+
+  const data = await res.json();
+  const videoId = data?.items?.[0]?.id?.videoId ?? null;
+  if (!videoId) {
+    console.log('YouTube API returned no results for:', artist, '-', title);
+    return null;
+  }
+
+  console.log('YouTube video ID found:', videoId);
+  return videoId;
+}
+
 // --- Odesli ---
 
 async function fetchOdesli(url, isSpotify = false) {
@@ -181,24 +215,26 @@ async function getOdesliData(url) {
   }
 
   // Spotify opt-out fallback: Odesli can't process the URL at all.
-  // Get artist/title directly from Spotify API and construct YouTube search URLs.
+  // Get artist/title from Spotify API, then find the YouTube video via YouTube Data API.
   if (!data && isSpotify) {
     const trackId = extractSpotifyTrackId(clean);
     if (!trackId) return null;
 
-    console.log('Odesli blocked by opt-out, falling back to Spotify API + YouTube search URLs');
+    console.log('Odesli blocked by opt-out, falling back to Spotify API + YouTube Data API');
     const info = await getSpotifyTrackInfo(trackId);
     if (!info || !info.artist || !info.title) return null;
 
     const { artist, title, spotifyUrl } = info;
-    const q = encodeURIComponent(`${artist} ${title}`);
-    const links = {
-      youtube:      { url: `https://www.youtube.com/results?search_query=${q}` },
-      youtubeMusic: { url: `https://music.youtube.com/search?q=${q}` },
-      ...(spotifyUrl ? { spotify: { url: spotifyUrl } } : {}),
-    };
+    const links = {};
 
-    console.log('Built search URL fallback links for:', artist, '-', title);
+    const videoId = await searchYouTube(artist, title);
+    if (videoId) {
+      links.youtube      = { url: `https://www.youtube.com/watch?v=${videoId}` };
+      links.youtubeMusic = { url: `https://music.youtube.com/watch?v=${videoId}` };
+    }
+    if (spotifyUrl) links.spotify = { url: spotifyUrl };
+
+    console.log('Built fallback links for:', artist, '-', title);
     return { links, artist, title };
   }
 
@@ -209,13 +245,21 @@ async function getOdesliData(url) {
   const title = entity?.title ?? null;
   const links = data.linksByPlatform;
 
+  // YouTube fallback: Odesli returned data but no YouTube links
+  if ((!links.youtube || !links.youtubeMusic) && artist && title) {
+    console.log('Missing YouTube links from Odesli, trying YouTube Data API fallback...');
+    const videoId = await searchYouTube(artist, title);
+    if (videoId) {
+      if (!links.youtube)      links.youtube      = { url: `https://www.youtube.com/watch?v=${videoId}` };
+      if (!links.youtubeMusic) links.youtubeMusic = { url: `https://music.youtube.com/watch?v=${videoId}` };
+    }
+  }
+
   // Spotify fallback: Odesli returned data but no Spotify link
   if (!links.spotify && artist && title) {
     console.log('No Spotify link from Odesli, trying Spotify API fallback...');
     const spotifyUrl = await searchSpotify(artist, title);
-    if (spotifyUrl) {
-      links.spotify = { url: spotifyUrl };
-    }
+    if (spotifyUrl) links.spotify = { url: spotifyUrl };
   }
 
   return { links, artist, title };
