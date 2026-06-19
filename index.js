@@ -51,17 +51,6 @@ function extractSpotifyTrackId(url) {
   return match ? match[1] : null;
 }
 
-// Split a YouTube video title on the first " - " to get { artist, songTitle }.
-// Returns null for the artist if no " - " is found.
-function splitVideoTitle(videoTitle) {
-  const idx = videoTitle.indexOf(' - ');
-  if (idx === -1) return { artist: null, songTitle: videoTitle.trim() };
-  return {
-    artist:    videoTitle.slice(0, idx).trim(),
-    songTitle: videoTitle.slice(idx + 3).trim(),
-  };
-}
-
 function youtubeSearchUrl(artist, title) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${artist} ${title}`)}`;
 }
@@ -122,52 +111,6 @@ async function getSpotifyTrackInfo(trackId) {
     title:      data?.name ?? null,
     spotifyUrl: data?.external_urls?.spotify ?? null,
   };
-}
-
-// Run a single Spotify search query string, return the first track object or null.
-async function spotifySearchQuery(token, q) {
-  console.log('Spotify search query:', q);
-  const res = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=1`,
-    { headers: { Authorization: `Bearer ${token}` } }
-  );
-  if (!res.ok) {
-    console.log('Spotify search request failed:', res.status);
-    return null;
-  }
-  return (await res.json())?.tracks?.items?.[0] ?? null;
-}
-
-// Search Spotify using artist and song title extracted from a YouTube video title.
-// Uses quoted structured query for precision: artist:"X" track:"Y"
-// If no " - " separator exists in the title, returns null immediately (no plain text fallback).
-// Returns { url, artist, title } on success, null on failure.
-async function searchSpotifyForYouTube(videoTitle) {
-  const token = await getSpotifyToken();
-  if (!token) return null;
-
-  const { artist, songTitle } = splitVideoTitle(videoTitle);
-  if (!artist) {
-    console.log('No " - " in video title, skipping Spotify search:', videoTitle);
-    return null;
-  }
-
-  const q = `artist:"${artist}" track:"${songTitle}"`;
-  console.log('Spotify structured search:', q);
-  const track = await spotifySearchQuery(token, q);
-
-  if (!track) {
-    console.log('Spotify structured search returned nothing for:', q);
-    return null;
-  }
-
-  const result = {
-    url:    track.external_urls.spotify,
-    artist: track.artists?.[0]?.name ?? null,
-    title:  track.name ?? null,
-  };
-  console.log('Spotify search found:', result.artist, '-', result.title);
-  return result;
 }
 
 // --- YouTube Data API ---
@@ -296,36 +239,34 @@ async function getOdesliData(url) {
   let artist = null;
   let title  = null;
 
-  if (links.spotify) {
-    // Source has a Spotify link — use Spotify catalog as authoritative metadata
-    const trackId = extractSpotifyTrackId(links.spotify.url);
+  if (isSpotify) {
+    // Spotify-sourced: use Spotify API for authoritative artist/title, then find YouTube links
+    const trackId = extractSpotifyTrackId(links.spotify?.url ?? clean);
     if (trackId) {
       const info = await getSpotifyTrackInfo(trackId);
       if (info?.artist && info?.title) ({ artist, title } = info);
     }
+    if (!artist || !title) {
+      artist = entity?.artistName ?? null;
+      title  = entity?.title ?? null;
+    }
     if (!artist || !title) return null;
 
     await resolveYouTubeLinks(links, artist, title);
+    if (!links.spotify) links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(title)}` };
   } else {
-    // YouTube-sourced: split the video title on " - " to extract artist and song title.
-    // Never use Odesli's artistName here — it reflects the YouTube channel, not the real artist.
-    const videoTitle = entity?.title ?? null;
-    if (!videoTitle) return null;
+    // YouTube-sourced: use Odesli entity fields directly for the header, no Spotify matching
+    artist = entity?.artistName ?? null;
+    title  = entity?.title ?? null;
+    if (!artist || !title) return null;
 
-    const spotifyResult = await searchSpotifyForYouTube(videoTitle);
-    if (spotifyResult) {
-      links.spotify = { url: spotifyResult.url };
-      artist = spotifyResult.artist;
-      title  = spotifyResult.title;
-    } else {
-      // Spotify search failed — derive artist/title from the video title split
-      const { artist: splitArtist, songTitle } = splitVideoTitle(videoTitle);
-      artist = splitArtist ?? videoTitle;
-      title  = songTitle;
-      links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(videoTitle)}` };
-    }
-
+    // Odesli almost always returns YouTube links for YouTube sources; this is a rare fallback
     await resolveYouTubeLinks(links, artist, title);
+
+    // Spotify: just provide a search URL, no API matching attempt
+    if (!links.spotify) {
+      links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(title)}` };
+    }
   }
 
   return { links, artist, title };
