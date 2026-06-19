@@ -38,7 +38,7 @@ const PLATFORM_ORDER = [
 // All other URLs get every query param stripped.
 function cleanUrl(url) {
   const parsed = new URL(url);
-  if (parsed.hostname === 'www.youtube.com' || parsed.hostname === 'youtube.com') {
+  if (['www.youtube.com', 'youtube.com', 'music.youtube.com'].includes(parsed.hostname)) {
     const v = parsed.searchParams.get('v');
     parsed.search = '';
     if (v) parsed.searchParams.set('v', v);
@@ -119,11 +119,12 @@ async function getSpotifyTrackInfo(trackId) {
   };
 }
 
-async function searchSpotify(artist, title) {
+// Searches Spotify by title only — returns { url, artist, title } or null
+async function searchSpotify(title) {
   const token = await getSpotifyToken();
   if (!token) return null;
 
-  const q = encodeURIComponent(`track:${title} artist:${artist}`);
+  const q = encodeURIComponent(`track:${title}`);
   const res = await fetch(
     `https://api.spotify.com/v1/search?q=${q}&type=track&limit=1`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -138,8 +139,13 @@ async function searchSpotify(artist, title) {
   const track = data?.tracks?.items?.[0];
   if (!track) return null;
 
-  console.log('Spotify search found:', track.external_urls.spotify);
-  return track.external_urls.spotify;
+  const result = {
+    url:    track.external_urls.spotify,
+    artist: track.artists?.[0]?.name ?? null,
+    title:  track.name ?? null,
+  };
+  console.log('Spotify search found:', result.artist, '-', result.title, result.url);
+  return result;
 }
 
 // --- YouTube Data API ---
@@ -227,15 +233,22 @@ async function resolveYouTubeLinks(links, artist, title) {
   }
 }
 
-// Resolve Spotify link with guaranteed output:
-// 1. Use Odesli's link if present
-// 2. Try Spotify search API
+// Resolve Spotify link with guaranteed output.
+// Returns { artist, title } from Spotify if the search found a track, otherwise null.
+// 1. Use Odesli's link if present (no metadata update needed)
+// 2. Search Spotify by title only — use returned artist/title as authoritative header
 // 3. Fall back to Spotify search URL
-async function resolveSpotifyLink(links, artist, title) {
-  if (links.spotify) return;
+async function resolveSpotifyLink(links, title) {
+  if (links.spotify) return null;
 
-  const spotifyUrl = await searchSpotify(artist, title);
-  links.spotify = { url: spotifyUrl ?? spotifySearchUrl(artist, title) };
+  const result = await searchSpotify(title);
+  if (result) {
+    links.spotify = { url: result.url };
+    return { artist: result.artist, title: result.title };
+  }
+
+  links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(title)}` };
+  return null;
 }
 
 async function getOdesliData(url) {
@@ -268,7 +281,7 @@ async function getOdesliData(url) {
     if (spotifyUrl) links.spotify = { url: spotifyUrl };
 
     await resolveYouTubeLinks(links, artist, title);
-    await resolveSpotifyLink(links, artist, title);
+    await resolveSpotifyLink(links, title);
     return { links, artist, title };
   }
 
@@ -298,7 +311,13 @@ async function getOdesliData(url) {
   if (!artist || !title) return null;
 
   await resolveYouTubeLinks(links, artist, title);
-  await resolveSpotifyLink(links, artist, title);
+  const spotifyMeta = await resolveSpotifyLink(links, title);
+
+  // If Spotify search returned a track, use its artist/title as the definitive header
+  if (spotifyMeta?.artist && spotifyMeta?.title) {
+    artist = spotifyMeta.artist;
+    title  = spotifyMeta.title;
+  }
 
   return { links, artist, title };
 }
