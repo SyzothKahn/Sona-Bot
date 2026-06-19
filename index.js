@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
+const http = require('http');
 
 const client = new Client({
   intents: [
@@ -21,8 +22,19 @@ const PLATFORM_ORDER = [
   { key: 'amazonMusic',  label: 'AMAZON MUSIC' },
 ];
 
+// Strip tracking params from Spotify URLs so Odesli doesn't bail on opt-out signals
+function cleanUrl(url) {
+  const parsed = new URL(url);
+  if (parsed.hostname === 'open.spotify.com') {
+    // Keep only the clean path (e.g. /track/TRACKID), drop all query params
+    return `${parsed.origin}${parsed.pathname}`;
+  }
+  return url;
+}
+
 async function getOdesliData(url) {
-  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US`;
+  const clean = cleanUrl(url);
+  const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(clean)}&userCountry=US`;
   const res = await fetch(apiUrl);
   if (!res.ok) return null;
   const data = await res.json();
@@ -41,13 +53,12 @@ client.on('messageCreate', async (message) => {
   const urls = [...(message.content.matchAll(MUSIC_URL_REGEX) ?? [])].map((m) => m[0]);
   if (urls.length === 0) return;
 
-  // Process only the first detected music URL
   const url = urls[0];
   let data;
   try {
     data = await getOdesliData(url);
   } catch {
-    return; // silent failure
+    return;
   }
   if (!data) return;
 
@@ -65,6 +76,12 @@ client.on('messageCreate', async (message) => {
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
+});
+
+// Keep-alive HTTP server so Railway doesn't SIGTERM the process
+const PORT = process.env.PORT || 3000;
+http.createServer((req, res) => res.end('ok')).listen(PORT, () => {
+  console.log(`Keep-alive server listening on port ${PORT}`);
 });
 
 client.login(process.env.DISCORD_TOKEN);
