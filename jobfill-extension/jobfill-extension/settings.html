@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>JobFill — Your Profile</title>
+<style>
+  :root {
+    --ink: #16213A;
+    --ink-soft: #4C5870;
+    --paper: #F3F5F8;
+    --card: #FFFFFF;
+    --line: #DBE0E8;
+    --accent: #D9531E;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  }
+
+  .page {
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  header.top {
+    margin-bottom: 28px;
+  }
+
+  .wordmark {
+    font-family: Georgia, "Iowan Old Style", serif;
+    font-size: 28px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .tagline {
+    font-size: 13px;
+    color: var(--ink-soft);
+    margin: 4px 0 0 0;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 18px;
+  }
+
+  .card h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--accent);
+    margin: 0 0 14px 0;
+  }
+
+  .kv-grid {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    row-gap: 8px;
+    column-gap: 12px;
+    font-size: 13px;
+  }
+
+  .kv-grid dt {
+    color: var(--ink-soft);
+  }
+
+  .kv-grid dd {
+    margin: 0;
+  }
+
+  .job {
+    margin-bottom: 18px;
+  }
+
+  .job:last-child {
+    margin-bottom: 0;
+  }
+
+  .job-title {
+    font-size: 14px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  .job-meta {
+    font-size: 12px;
+    color: var(--ink-soft);
+    margin: 2px 0 8px 0;
+  }
+
+  .job ul {
+    margin: 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .edu-entry {
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .edu-entry:last-child {
+    margin-bottom: 0;
+  }
+
+  .edu-degree {
+    font-weight: 700;
+  }
+
+  .edu-meta {
+    color: var(--ink-soft);
+    font-size: 12px;
+  }
+
+  .tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .tag {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+
+  .summary-text {
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  pre.cover-letter {
+    white-space: pre-wrap;
+    font-family: Georgia, serif;
+    font-size: 13px;
+    line-height: 1.6;
+    margin: 0;
+  }
+
+  .qa-entry {
+    border-top: 1px solid var(--line);
+    padding: 14px 0;
+  }
+
+  .qa-entry:first-child {
+    border-top: none;
+    padding-top: 0;
+  }
+
+  .qa-question {
+    font-size: 13px;
+    font-weight: 700;
+    margin: 0 0 6px 0;
+  }
+
+  .qa-answer {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+
+  .note {
+    font-size: 12px;
+    color: var(--ink-soft);
+    background: var(--paper);
+    border: 1px dashed var(--line);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 18px;
+  }
+
+  .loading {
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+    <header class="top">
+      <p class="wordmark">JobFill</p>
+      <p class="tagline">Your saved profile — this is what autofill and AI answers will pull from</p>
+    </header>
+
+    <div class="note">
+      This info is hard-coded into the extension, not editable here. If anything changes (a new job, a new phone number), it gets updated directly in the code.
+    </div>
+
+    <div id="content" class="loading">Loading your profile…</div>
+  </div>
+
+  <script src="settings.js"></script>
+</body>
+</html>
