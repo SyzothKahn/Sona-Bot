@@ -22,14 +22,19 @@ const PLATFORM_ORDER = [
   { key: 'amazonMusic',  label: 'AMAZON MUSIC' },
 ];
 
-// Strip tracking params from Spotify URLs so Odesli doesn't bail on opt-out signals
+// Strip all tracking params before sending to Odesli.
+// youtube.com/watch needs the 'v' param to identify the video — keep only that.
+// Every other URL gets all query params removed entirely.
 function cleanUrl(url) {
   const parsed = new URL(url);
-  if (parsed.hostname === 'open.spotify.com') {
-    // Keep only the clean path (e.g. /track/TRACKID), drop all query params
-    return `${parsed.origin}${parsed.pathname}`;
+  if (parsed.hostname === 'www.youtube.com' || parsed.hostname === 'youtube.com') {
+    const v = parsed.searchParams.get('v');
+    parsed.search = '';
+    if (v) parsed.searchParams.set('v', v);
+  } else {
+    parsed.search = '';
   }
-  return url;
+  return parsed.toString();
 }
 
 async function getOdesliData(url) {
