@@ -84,7 +84,7 @@ async function getSpotifyToken() {
   return spotifyToken;
 }
 
-// Fetch artist and title for a Spotify track ID directly from the Spotify API
+// Fetch track metadata from Spotify API by track ID — always accurate artist/title
 async function getSpotifyTrackInfo(trackId) {
   const token = await getSpotifyToken();
   if (!token) return null;
@@ -128,7 +128,7 @@ async function searchSpotify(artist, title) {
     return null;
   }
 
-  console.log('Spotify fallback found:', track.external_urls.spotify);
+  console.log('Spotify search fallback found:', track.external_urls.spotify);
   return track.external_urls.spotify;
 }
 
@@ -214,13 +214,13 @@ async function getOdesliData(url) {
     }
   }
 
-  // Spotify opt-out fallback: Odesli can't process the URL at all.
-  // Get artist/title from Spotify API, then find the YouTube video via YouTube Data API.
+  // Spotify opt-out: Odesli can't process the URL at all.
+  // Get metadata from Spotify API and find YouTube via YouTube Data API.
   if (!data && isSpotify) {
     const trackId = extractSpotifyTrackId(clean);
     if (!trackId) return null;
 
-    console.log('Odesli blocked by opt-out, falling back to Spotify API + YouTube Data API');
+    console.log('Odesli blocked by opt-out, falling back to Spotify + YouTube Data API');
     const info = await getSpotifyTrackInfo(trackId);
     if (!info || !info.artist || !info.title) return null;
 
@@ -234,20 +234,36 @@ async function getOdesliData(url) {
     }
     if (spotifyUrl) links.spotify = { url: spotifyUrl };
 
-    console.log('Built fallback links for:', artist, '-', title);
     return { links, artist, title };
   }
 
   if (!data) return null;
 
-  const entity = data.entitiesByUniqueId?.[data.entityUniqueId];
-  const artist = entity?.artistName ?? null;
-  const title = entity?.title ?? null;
   const links = data.linksByPlatform;
 
-  // YouTube fallback: Odesli returned data but no YouTube links
+  // Use Spotify's catalog as the authoritative source for artist/title if available,
+  // since Odesli's entity data can pull the YouTube channel name instead of the real artist.
+  let artist = null;
+  let title = null;
+
+  if (links.spotify) {
+    const trackId = extractSpotifyTrackId(links.spotify.url);
+    if (trackId) {
+      const info = await getSpotifyTrackInfo(trackId);
+      if (info) ({ artist, title } = info);
+    }
+  }
+
+  // Fall back to Odesli entity fields if Spotify metadata wasn't available
+  if (!artist || !title) {
+    const entity = data.entitiesByUniqueId?.[data.entityUniqueId];
+    artist = entity?.artistName ?? null;
+    title  = entity?.title ?? null;
+  }
+
+  // Fill in missing YouTube links via YouTube Data API
   if ((!links.youtube || !links.youtubeMusic) && artist && title) {
-    console.log('Missing YouTube links from Odesli, trying YouTube Data API fallback...');
+    console.log('Missing YouTube links from Odesli, trying YouTube Data API...');
     const videoId = await searchYouTube(artist, title);
     if (videoId) {
       if (!links.youtube)      links.youtube      = { url: `https://www.youtube.com/watch?v=${videoId}` };
@@ -255,9 +271,9 @@ async function getOdesliData(url) {
     }
   }
 
-  // Spotify fallback: Odesli returned data but no Spotify link
+  // Fill in missing Spotify link via Spotify search
   if (!links.spotify && artist && title) {
-    console.log('No Spotify link from Odesli, trying Spotify API fallback...');
+    console.log('No Spotify link from Odesli, trying Spotify search...');
     const spotifyUrl = await searchSpotify(artist, title);
     if (spotifyUrl) links.spotify = { url: spotifyUrl };
   }
@@ -283,7 +299,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
   if (!data) {
-    console.log('No data returned from Odesli, skipping reply.');
+    console.log('No data returned, skipping reply.');
     return;
   }
 
