@@ -22,6 +22,8 @@ const client = new Client({
   ],
 });
 
+const recentlySentMessages = new Set();
+
 const MUSIC_URL_REGEX =
   /https?:\/\/(open\.spotify\.com\/[^\s]+|spotify\.link\/[^\s]+|(?:www\.)?youtube\.com\/watch\?[^\s]*v=[^\s]+|youtu\.be\/[^\s]+|music\.youtube\.com\/[^\s]+)/gi;
 
@@ -159,7 +161,8 @@ async function searchYouTube(artist, title) {
   }
 
   if (!res.ok) {
-    console.log('YouTube API error:', res.status);
+    const errText = await res.text();
+    console.log('YouTube API error:', res.status, errText);
     return null;
   }
 
@@ -304,6 +307,7 @@ async function getOdesliData(url) {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
+  if (recentlySentMessages.has(message.id)) return;
 
   const urls = [...(message.content.matchAll(MUSIC_URL_REGEX) ?? [])].map((m) => m[0]);
   if (urls.length === 0) return;
@@ -343,7 +347,9 @@ client.on('messageCreate', async (message) => {
   } catch {
     // delete failed (missing permissions or already gone) — continue to send anyway
   }
-  await message.channel.send(body);
+  const sent = await message.channel.send(body);
+  recentlySentMessages.add(sent.id);
+  setTimeout(() => recentlySentMessages.delete(sent.id), 5000);
 });
 
 client.once('ready', () => {
