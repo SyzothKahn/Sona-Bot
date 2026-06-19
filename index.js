@@ -138,36 +138,36 @@ async function spotifySearchQuery(token, q) {
   return (await res.json())?.tracks?.items?.[0] ?? null;
 }
 
-// Search Spotify using extracted artist and song title from a YouTube video title.
-// Tries in order:
-//   1. artist:ARTIST track:SONGTITLE  (structured, most precise)
-//   2. Plain text full video title    (fallback when structured returns nothing)
+// Search Spotify using artist and song title extracted from a YouTube video title.
+// Uses quoted structured query for precision: artist:"X" track:"Y"
+// If no " - " separator exists in the title, returns null immediately (no plain text fallback).
 // Returns { url, artist, title } on success, null on failure.
 async function searchSpotifyForYouTube(videoTitle) {
   const token = await getSpotifyToken();
   if (!token) return null;
 
   const { artist, songTitle } = splitVideoTitle(videoTitle);
-
-  const queries = artist
-    ? [`artist:${artist} track:${songTitle}`, videoTitle]
-    : [videoTitle];
-
-  for (const q of queries) {
-    const track = await spotifySearchQuery(token, q);
-    if (track) {
-      const result = {
-        url:    track.external_urls.spotify,
-        artist: track.artists?.[0]?.name ?? null,
-        title:  track.name ?? null,
-      };
-      console.log('Spotify search found:', result.artist, '-', result.title);
-      return result;
-    }
+  if (!artist) {
+    console.log('No " - " in video title, skipping Spotify search:', videoTitle);
+    return null;
   }
 
-  console.log('Spotify search exhausted all attempts for:', videoTitle);
-  return null;
+  const q = `artist:"${artist}" track:"${songTitle}"`;
+  console.log('Spotify structured search:', q);
+  const track = await spotifySearchQuery(token, q);
+
+  if (!track) {
+    console.log('Spotify structured search returned nothing for:', q);
+    return null;
+  }
+
+  const result = {
+    url:    track.external_urls.spotify,
+    artist: track.artists?.[0]?.name ?? null,
+    title:  track.name ?? null,
+  };
+  console.log('Spotify search found:', result.artist, '-', result.title);
+  return result;
 }
 
 // --- YouTube Data API ---
