@@ -255,8 +255,9 @@ async function getOdesliData(url) {
     await resolveYouTubeLinks(links, artist, title);
     if (!links.spotify) links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(title)}` };
   } else {
-    // YouTube-sourced: use Odesli entity fields directly for the header, no Spotify matching
-    artist = entity?.artistName ?? null;
+    // YouTube-sourced: use entity title as the full header (already "Artist - Song" format).
+    // Never use artistName — it's the YouTube channel name, not the real artist.
+    artist = null;
     title  = entity?.title ?? null;
     if (!artist || !title) return null;
 
@@ -308,7 +309,7 @@ client.on('messageCreate', async (message) => {
 
   if (lines.length === 0) return;
 
-  const header = artist && title ? `**${artist} - ${title}**\n` : '';
+  const header = title ? (artist ? `**${artist} - ${title}**\n` : `**${title}**\n`) : '';
   const body = `${header}${lines.join('\n')}`;
 
   try {
