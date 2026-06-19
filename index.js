@@ -259,7 +259,7 @@ async function getOdesliData(url) {
     // Never use artistName — it's the YouTube channel name, not the real artist.
     artist = null;
     title  = entity?.title ?? null;
-    if (!artist || !title) return null;
+    if (!title) return null;
 
     // Odesli almost always returns YouTube links for YouTube sources; this is a rare fallback
     await resolveYouTubeLinks(links, artist, title);
