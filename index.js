@@ -10,7 +10,7 @@ const client = new Client({
 });
 
 const MUSIC_URL_REGEX =
-  /https?:\/\/(open\.spotify\.com\/(track|album|playlist)\/[^\s]+|spotify\.link\/[^\s]+|(?:www\.)?youtube\.com\/watch\?[^\s]*v=[^\s]+|youtu\.be\/[^\s]+|music\.youtube\.com\/[^\s]+)/gi;
+  /https?:\/\/(open\.spotify\.com\/[^\s]+|spotify\.link\/[^\s]+|(?:www\.)?youtube\.com\/watch\?[^\s]*v=[^\s]+|youtu\.be\/[^\s]+|music\.youtube\.com\/[^\s]+)/gi;
 
 const PLATFORM_ORDER = [
   { key: 'youtube',      label: 'YOUTUBE' },
@@ -21,12 +21,18 @@ const PLATFORM_ORDER = [
   { key: 'amazonMusic',  label: 'AMAZON MUSIC' },
 ];
 
-async function getOdesliLinks(url) {
+async function getOdesliData(url) {
   const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}`;
   const res = await fetch(apiUrl);
   if (!res.ok) return null;
   const data = await res.json();
-  return data.linksByPlatform ?? null;
+  if (!data.linksByPlatform) return null;
+  const entity = data.entitiesByUniqueId?.[data.entityUniqueId];
+  return {
+    links: data.linksByPlatform,
+    artist: entity?.artistName ?? null,
+    title: entity?.title ?? null,
+  };
 }
 
 client.on('messageCreate', async (message) => {
@@ -37,21 +43,24 @@ client.on('messageCreate', async (message) => {
 
   // Process only the first detected music URL
   const url = urls[0];
-  let links;
+  let data;
   try {
-    links = await getOdesliLinks(url);
+    data = await getOdesliData(url);
   } catch {
     return; // silent failure
   }
-  if (!links) return;
+  if (!data) return;
+
+  const { links, artist, title } = data;
 
   const lines = PLATFORM_ORDER
     .filter(({ key }) => links[key])
-    .map(({ key, label }) => `${label}: ${links[key].url}`);
+    .map(({ key, label }) => `${label}: <${links[key].url}>`);
 
   if (lines.length === 0) return;
 
-  await message.reply(lines.join('\n'));
+  const header = artist && title ? `**${artist} - ${title}**\n` : '';
+  await message.reply(`${header}${lines.join('\n')}`);
 });
 
 client.once('ready', () => {
