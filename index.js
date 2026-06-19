@@ -261,14 +261,16 @@ client.on('messageCreate', async (message) => {
 
   try {
     await message.delete();
-    await message.channel.send(body);
   } catch {
-    await message.reply(body);
+    // delete failed (missing permissions or already gone) — continue to send anyway
   }
+  await message.channel.send(body);
 });
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
+
+client.on('error', (err) => console.log('Discord client error:', err));
 
 client.login(process.env.DISCORD_TOKEN);
