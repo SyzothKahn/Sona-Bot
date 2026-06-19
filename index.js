@@ -303,8 +303,9 @@ client.on('messageCreate', async (message) => {
     .filter(({ key }) => links[key])
     .map(({ key, label }) => {
       const u = links[key].url;
-      // Leave YouTube bare so Discord auto-embeds the video; suppress all others
-      return key === 'youtube' ? `${label}: ${u}` : `${label}: <${u}>`;
+      // Bare markdown link on YouTube so Discord shows the video embed.
+      // [text](<url>) suppresses the embed on all other platforms.
+      return key === 'youtube' ? `[${label}](${u})` : `[${label}](<${u}>)`;
     });
 
   if (lines.length === 0) return;
