@@ -34,6 +34,7 @@ function cleanUrl(url) {
 
 async function getOdesliData(url) {
   const clean = cleanUrl(url);
+  console.log('Sending to Odesli:', clean);
   const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(clean)}&userCountry=US`;
   const res = await fetch(apiUrl);
   if (!res.ok) return null;
