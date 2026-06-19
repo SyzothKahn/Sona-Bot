@@ -106,7 +106,17 @@ async function fetchOdesli(url, isSpotify = false) {
   const extra = isSpotify ? '&skipCache=true' : '';
   const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US${extra}`;
   console.log('--- Odesli request URL:', apiUrl);
-  const res = await fetch(apiUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let res;
+  try {
+    res = await fetch(apiUrl, { signal: controller.signal });
+  } catch (err) {
+    console.log('--- Odesli fetch failed or timed out:', err.message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
   console.log('--- Odesli HTTP status:', res.status);
   const raw = await res.text();
   console.log('--- Odesli raw response:', raw);
@@ -197,10 +207,8 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Ignore SIGTERM so Railway can't kill the process mid-request
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, staying alive for in-flight requests');
-});
+// Explicitly ignore SIGTERM — Railway sends this to kill the process but we stay alive
+process.on('SIGTERM', () => {});
 
 // Keep-alive HTTP server — binds to Railway's PORT and returns explicit 200
 const PORT = process.env.PORT || 3000;
