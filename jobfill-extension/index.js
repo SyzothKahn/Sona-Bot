@@ -41,6 +41,67 @@ function extractSpotifyTrackId(url) {
   return match ? match[1] : null;
 }
 
+// --- Spotify Client Credentials ---
+
+let spotifyToken = null;
+let spotifyTokenExpiry = 0;
+
+async function getSpotifyToken() {
+  if (spotifyToken && Date.now() < spotifyTokenExpiry) return spotifyToken;
+
+  const creds = Buffer.from(
+    `${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`
+  ).toString('base64');
+
+  const res = await fetch('https://accounts.spotify.com/api/token', {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${creds}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials',
+  });
+
+  if (!res.ok) {
+    console.log('Spotify token request failed:', res.status);
+    return null;
+  }
+
+  const data = await res.json();
+  spotifyToken = data.access_token;
+  spotifyTokenExpiry = Date.now() + (data.expires_in - 60) * 1000; // refresh 1 min early
+  console.log('Spotify access token refreshed');
+  return spotifyToken;
+}
+
+async function searchSpotify(artist, title) {
+  const token = await getSpotifyToken();
+  if (!token) return null;
+
+  const q = encodeURIComponent(`track:${title} artist:${artist}`);
+  const res = await fetch(
+    `https://api.spotify.com/v1/search?q=${q}&type=track&limit=1`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+
+  if (!res.ok) {
+    console.log('Spotify search failed:', res.status);
+    return null;
+  }
+
+  const data = await res.json();
+  const track = data?.tracks?.items?.[0];
+  if (!track) {
+    console.log('Spotify search returned no results for:', artist, '-', title);
+    return null;
+  }
+
+  console.log('Spotify fallback found:', track.external_urls.spotify);
+  return track.external_urls.spotify;
+}
+
+// --- Odesli ---
+
 async function fetchOdesli(url, isSpotify = false) {
   const extra = isSpotify ? '&skipCache=true' : '';
   const apiUrl = `https://api.song.link/v1-alpha.1/links?url=${encodeURIComponent(url)}&userCountry=US${extra}`;
@@ -79,13 +140,25 @@ async function getOdesliData(url) {
   }
 
   if (!data) return null;
+
   const entity = data.entitiesByUniqueId?.[data.entityUniqueId];
-  return {
-    links: data.linksByPlatform,
-    artist: entity?.artistName ?? null,
-    title: entity?.title ?? null,
-  };
+  const artist = entity?.artistName ?? null;
+  const title = entity?.title ?? null;
+  const links = data.linksByPlatform;
+
+  // Spotify fallback: if Odesli didn't return a Spotify link, search directly
+  if (!links.spotify && artist && title) {
+    console.log('No Spotify link from Odesli, trying Spotify API fallback...');
+    const spotifyUrl = await searchSpotify(artist, title);
+    if (spotifyUrl) {
+      links.spotify = { url: spotifyUrl };
+    }
+  }
+
+  return { links, artist, title };
 }
+
+// --- Discord ---
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
