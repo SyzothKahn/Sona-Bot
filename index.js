@@ -86,3 +86,7 @@ http.createServer((req, res) => res.end('ok')).listen(PORT, () => {
 });
 
 client.login(process.env.DISCORD_TOKEN);
+```js
+const message = "Hello, World!";
+console.log(message);
+```
