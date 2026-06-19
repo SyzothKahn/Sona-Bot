@@ -84,6 +84,22 @@ async function getSpotifyToken() {
   return spotifyToken;
 }
 
+async function getSpotifyTrackISRC(trackId) {
+  const token = await getSpotifyToken();
+  if (!token) return null;
+  const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    console.log('Spotify track lookup failed:', res.status);
+    return null;
+  }
+  const data = await res.json();
+  const isrc = data?.external_ids?.isrc ?? null;
+  console.log('Spotify ISRC for track:', isrc);
+  return isrc;
+}
+
 async function searchSpotify(artist, title) {
   const token = await getSpotifyToken();
   if (!token) return null;
@@ -111,6 +127,27 @@ async function searchSpotify(artist, title) {
 }
 
 // --- Odesli ---
+
+async function fetchOdesliByISRC(isrc) {
+  const apiUrl = `https://api.song.link/v1-alpha.1/links?isrc=${encodeURIComponent(isrc)}&userCountry=US`;
+  console.log('--- Odesli ISRC request:', apiUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  let res;
+  try {
+    res = await fetch(apiUrl, { signal: controller.signal });
+  } catch (err) {
+    console.log('--- Odesli ISRC fetch failed or timed out:', err.message);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+  if (!res.ok) return null;
+  let data;
+  try { data = await res.json(); } catch { return null; }
+  console.log('--- ISRC linksByPlatform keys:', data.linksByPlatform ? Object.keys(data.linksByPlatform) : 'MISSING');
+  return data.linksByPlatform ? data : null;
+}
 
 async function fetchOdesli(url, isSpotify = false) {
   const extra = isSpotify ? '&skipCache=true' : '';
@@ -166,6 +203,25 @@ async function getOdesliData(url) {
   const title = entity?.title ?? null;
   const links = data.linksByPlatform;
 
+  // If Odesli returned Spotify-only results (opt-out), re-query using ISRC to get YouTube links
+  if (isSpotify && !links.youtube) {
+    const trackId = extractSpotifyTrackId(clean);
+    if (trackId) {
+      const isrc = await getSpotifyTrackISRC(trackId);
+      if (isrc) {
+        console.log('Re-querying Odesli via ISRC to get YouTube links:', isrc);
+        const isrcData = await fetchOdesliByISRC(isrc);
+        if (isrcData) {
+          // Merge any platform links that were missing from the original response
+          for (const [platform, val] of Object.entries(isrcData.linksByPlatform)) {
+            if (!links[platform]) links[platform] = val;
+          }
+        }
+      }
+    }
+  }
+
+  // Spotify fallback: if Odesli didn't return a Spotify link, search directly
   if (!links.spotify && artist && title) {
     console.log('No Spotify link from Odesli, trying Spotify API fallback...');
     const spotifyUrl = await searchSpotify(artist, title);
@@ -204,7 +260,11 @@ client.on('messageCreate', async (message) => {
 
   const lines = PLATFORM_ORDER
     .filter(({ key }) => links[key])
-    .map(({ key, label }) => `${label}: <${links[key].url}>`);
+    .map(({ key, label }) => {
+      const url = links[key].url;
+      // Leave YouTube bare so Discord auto-embeds the video; suppress all others
+      return key === 'youtube' ? `${label}: ${url}` : `${label}: <${url}>`;
+    });
 
   if (lines.length === 0) return;
 
