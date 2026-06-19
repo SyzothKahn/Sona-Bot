@@ -124,9 +124,17 @@ client.once('ready', () => {
   console.log(`Logged in as ${client.user.tag}`);
 });
 
-// Keep-alive HTTP server so Railway doesn't SIGTERM the process
+// Ignore SIGTERM so Railway can't kill the process mid-request
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, staying alive for in-flight requests');
+});
+
+// Keep-alive HTTP server — binds to Railway's PORT and returns explicit 200
 const PORT = process.env.PORT || 3000;
-http.createServer((req, res) => res.end('ok')).listen(PORT, () => {
+http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end('ok');
+}).listen(PORT, () => {
   console.log(`Keep-alive server listening on port ${PORT}`);
 });
 
