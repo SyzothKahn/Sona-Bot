@@ -346,7 +346,7 @@ client.on('messageCreate', async (message) => {
   const ytm = links.youtubeMusic ? `[MUSIC](<${links.youtubeMusic.url}>)`              : null;
   const sp  = links.spotify      ? `[SPOTIFY](<${links.spotify.url}>)`                 : null;
 
-  const sharedBy = `**${message.author.username}**`;
+  const sharedBy = `**${message.author.displayName}:**`;
   const line1 = [yt, ytm].filter(Boolean).join('/');
   const line2 = sp ?? '';
   const body  = [sharedBy, line1, line2].filter(Boolean).join('\n');
