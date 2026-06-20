@@ -92,6 +92,45 @@ async function getSpotifyToken() {
   return spotifyToken;
 }
 
+// Search Spotify by title and verify the result by checking whether the returned
+// artist name appears in the original video title (case-insensitive).
+// This catches wrong matches (e.g. a cover by an unknown artist) without blocking
+// well-known tracks whose artist name is already in the video title.
+// Returns the direct Spotify URL on a verified match, null otherwise.
+async function searchSpotifyVerified(videoTitle) {
+  const token = await getSpotifyToken();
+  if (!token) return null;
+
+  console.log('Spotify verified search:', videoTitle);
+  const res = await fetch(
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(videoTitle)}&type=track&limit=1`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    console.log('Spotify search failed:', res.status);
+    return null;
+  }
+
+  const track = (await res.json())?.tracks?.items?.[0];
+  if (!track) {
+    console.log('Spotify search returned no results for:', videoTitle);
+    return null;
+  }
+
+  const artistName    = track.artists?.[0]?.name ?? '';
+  const titleLower    = videoTitle.toLowerCase();
+  const artistLower   = artistName.toLowerCase();
+  const artistInTitle = artistLower.length > 0 && titleLower.includes(artistLower);
+
+  if (!artistInTitle) {
+    console.log(`Spotify result artist "${artistName}" not found in video title — rejecting`);
+    return null;
+  }
+
+  console.log('Spotify verified match:', artistName, '-', track.name);
+  return track.external_urls.spotify;
+}
+
 async function getSpotifyTrackInfo(trackId) {
   const token = await getSpotifyToken();
   if (!token) return null;
@@ -264,9 +303,10 @@ async function getOdesliData(url) {
     // Odesli almost always returns YouTube links for YouTube sources; this is a rare fallback
     await resolveYouTubeLinks(links, artist, title);
 
-    // Spotify: just provide a search URL, no API matching attempt
+    // Spotify: try a verified search using the entity title; fall back to search URL
     if (!links.spotify) {
-      links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(title)}` };
+      const spotifyUrl = await searchSpotifyVerified(title);
+      links.spotify = { url: spotifyUrl ?? `https://open.spotify.com/search/${encodeURIComponent(title)}` };
     }
   }
 
