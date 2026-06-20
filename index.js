@@ -342,18 +342,15 @@ client.on('messageCreate', async (message) => {
   const { links, artist, title } = data;
   console.log('Final links being used:', Object.keys(links));
 
-  const lines = PLATFORM_ORDER
-    .filter(({ key }) => links[key])
-    .map(({ key, label }) => {
-      const u = links[key].url;
-      // Bare markdown link on YouTube so Discord shows the video embed.
-      // [text](<url>) suppresses the embed on all other platforms.
-      return key === 'youtube' ? `[${label}](${u})` : `[${label}](<${u}>)`;
-    });
+  const yt  = links.youtube      ? `[YOUTUBE](${links.youtube.url})`                  : null;
+  const ytm = links.youtubeMusic ? `[MUSIC](<${links.youtubeMusic.url}>)`              : null;
+  const sp  = links.spotify      ? `[SPOTIFY](<${links.spotify.url}>)`                 : null;
 
-  if (lines.length === 0) return;
+  const line1 = [yt, ytm].filter(Boolean).join('/');
+  const line2 = sp ?? '';
+  const body  = [line1, line2].filter(Boolean).join('\n');
 
-  const body = lines.join('\n');
+  if (!body) return;
 
   try {
     await message.delete();
