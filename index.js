@@ -92,18 +92,21 @@ async function getSpotifyToken() {
   return spotifyToken;
 }
 
-// Search Spotify by title and verify the result by checking whether the returned
-// artist name appears in the original video title (case-insensitive).
-// This catches wrong matches (e.g. a cover by an unknown artist) without blocking
-// well-known tracks whose artist name is already in the video title.
+// Search Spotify using both the Odesli artistName and title as the query.
+// artistName is used only for searching, never for display.
+// Verifies the result by checking whether the returned Spotify artist name appears
+// anywhere in the combined search string (case-insensitive), catching wrong matches
+// from fan-channel uploads while still linking well-known tracks correctly.
 // Returns the direct Spotify URL on a verified match, null otherwise.
-async function searchSpotifyVerified(videoTitle) {
+async function searchSpotifyVerified(odesliArtist, odesliTitle) {
   const token = await getSpotifyToken();
   if (!token) return null;
 
-  console.log('Spotify verified search:', videoTitle);
+  const query = odesliArtist ? `${odesliArtist} ${odesliTitle}` : odesliTitle;
+  console.log('Spotify verified search:', query);
+
   const res = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(videoTitle)}&type=track&limit=1`,
+    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=track&limit=1`,
     { headers: { Authorization: `Bearer ${token}` } }
   );
   if (!res.ok) {
@@ -113,21 +116,20 @@ async function searchSpotifyVerified(videoTitle) {
 
   const track = (await res.json())?.tracks?.items?.[0];
   if (!track) {
-    console.log('Spotify search returned no results for:', videoTitle);
+    console.log('Spotify search returned no results for:', query);
     return null;
   }
 
-  const artistName    = track.artists?.[0]?.name ?? '';
-  const titleLower    = videoTitle.toLowerCase();
-  const artistLower   = artistName.toLowerCase();
-  const artistInTitle = artistLower.length > 0 && titleLower.includes(artistLower);
+  const returnedArtist = track.artists?.[0]?.name ?? '';
+  const queryLower     = query.toLowerCase();
+  const artistInQuery  = returnedArtist.length > 0 && queryLower.includes(returnedArtist.toLowerCase());
 
-  if (!artistInTitle) {
-    console.log(`Spotify result artist "${artistName}" not found in video title — rejecting`);
+  if (!artistInQuery) {
+    console.log(`Spotify result artist "${returnedArtist}" not found in query "${query}" — rejecting`);
     return null;
   }
 
-  console.log('Spotify verified match:', artistName, '-', track.name);
+  console.log('Spotify verified match:', returnedArtist, '-', track.name);
   return track.external_urls.spotify;
 }
 
@@ -295,17 +297,19 @@ async function getOdesliData(url) {
     if (!links.spotify) links.spotify = { url: `https://open.spotify.com/search/${encodeURIComponent(title)}` };
   } else {
     // YouTube-sourced: use entity title as the full header (already "Artist - Song" format).
-    // Never use artistName — it's the YouTube channel name, not the real artist.
+    // Never use artistName for display — it's the YouTube channel name, not the real artist.
+    // But DO pass it to Spotify search as a hint to improve matching accuracy.
     artist = null;
     title  = entity?.title ?? null;
+    const odesliArtistHint = entity?.artistName ?? null;
     if (!title) return null;
 
     // Odesli almost always returns YouTube links for YouTube sources; this is a rare fallback
-    await resolveYouTubeLinks(links, artist, title);
+    await resolveYouTubeLinks(links, odesliArtistHint ?? '', title);
 
-    // Spotify: try a verified search using the entity title; fall back to search URL
+    // Spotify: search using artistName + title for accuracy, verify the result, fall back to search URL
     if (!links.spotify) {
-      const spotifyUrl = await searchSpotifyVerified(title);
+      const spotifyUrl = await searchSpotifyVerified(odesliArtistHint, title);
       links.spotify = { url: spotifyUrl ?? `https://open.spotify.com/search/${encodeURIComponent(title)}` };
     }
   }
