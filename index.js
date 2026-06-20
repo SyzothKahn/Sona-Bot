@@ -31,7 +31,6 @@ const PLATFORM_ORDER = [
   { key: 'youtube',      label: 'YOUTUBE' },
   { key: 'youtubeMusic', label: 'YOUTUBE MUSIC' },
   { key: 'spotify',      label: 'SPOTIFY' },
-  { key: 'appleMusic',   label: 'APPLE MUSIC' },
 ];
 
 function cleanUrl(url) {
@@ -354,8 +353,7 @@ client.on('messageCreate', async (message) => {
 
   if (lines.length === 0) return;
 
-  const header = title ? (artist ? `**${artist} - ${title}**\n` : `**${title}**\n`) : '';
-  const body = `${header}${lines.join('\n')}`;
+  const body = lines.join('\n');
 
   try {
     await message.delete();
